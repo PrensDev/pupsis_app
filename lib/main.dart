@@ -1,43 +1,51 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/material.dart';
 
 // Import Dependencies
+import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:connectivity/connectivity.dart';
 
 void main() => runApp(
       MaterialApp(
-        home: WebViewExample(),
         debugShowCheckedModeBanner: false,
-        title: 'PUP-SIS Student Module',
-        color: Colors.red[800],
+        title: 'PUP-SIS',
+        color: Colors.red[700],
+        theme: ThemeData(
+          primaryColor: Colors.red[900],
+          accentColor: Colors.redAccent[700],
+        ),
+        home: Home(),
       ),
-    );
+    );  
 
-class WebViewExample extends StatefulWidget {
+class Home extends StatefulWidget {
   @override
-  _WebViewExampleState createState() => _WebViewExampleState();
+  _HomeState createState() => _HomeState();
 }
 
-class _WebViewExampleState extends State<WebViewExample> {
+class _HomeState extends State<Home> {
   final Completer<WebViewController> _controller =
       Completer<WebViewController>();
 
   num position = 1;
 
   final key = UniqueKey();
+  final Connectivity _connectivity = Connectivity();
+  StreamSubscription<ConnectivityResult> _connectivitySubscription;
 
   _doneLoading() {
     setState(() {
       position = 0;
+      print('[State 0]: Done loading');
     });
   }
 
   _startLoading() {
     setState(() {
       position = 1;
+      print('[State 1]: Start Loading');
     });
   }
 
@@ -58,7 +66,8 @@ class _WebViewExampleState extends State<WebViewExample> {
     return showDialog(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: Text("Are you sure you want to leave?"),
+        title: Text("Leave this app?"),
+        content: Text("Are you sure you want to leave?"),
         actions: <Widget>[
           FlatButton(
             child: Text(
@@ -82,7 +91,80 @@ class _WebViewExampleState extends State<WebViewExample> {
   @override
   void initState() {
     super.initState();
+    initConnectivity();
+    _connectivitySubscription =
+        _connectivity.onConnectivityChanged.listen(_updateConnectionStatus);
     if (Platform.isAndroid) WebView.platform = SurfaceAndroidWebView();
+  }
+
+  Future<void> initConnectivity() async {
+    ConnectivityResult result;
+
+    // If the widget was removed from the tree while the asynchronous platform
+    // message was in flight, we want to discard the reply rather than calling
+    // setState to update our non-existent appearance.
+    if (!mounted) {
+      return Future.value(null);
+    }
+
+    return _updateConnectionStatus(result);
+  }
+
+  bool activeNoConnectionDialog = false;
+
+  Future<void> _updateConnectionStatus(ConnectivityResult result) async {
+    switch (result) {
+      case ConnectivityResult.wifi:
+      case ConnectivityResult.mobile:
+        print("Connectivity Result: " + result.toString());
+        if (activeNoConnectionDialog) {
+          Navigator.of(context, rootNavigator: true).pop(result);
+          activeNoConnectionDialog = false;
+        }
+        break;
+      case ConnectivityResult.none:
+      default:
+        _noConnectionDialog();
+        break;
+    }
+  }
+
+  _noConnectionDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text("Error"),
+        content: Text(
+            "You are not connected. Please check your internet connection!"),
+        actions: <Widget>[
+          FlatButton(
+            child: Text(
+              "Exit",
+              style: TextStyle(
+                color: Colors.grey[900],
+              ),
+            ),
+            onPressed: () => exit(0),
+          ),
+          FlatButton(
+            child: Text(
+              "Test",
+              style: TextStyle(
+                color: Colors.white,
+              ),
+            ),
+            color: Colors.red[900],
+            onPressed: () async {
+              
+            },
+          ),
+        ],
+      ),
+    );
+    setState(() {
+      activeNoConnectionDialog = true;
+    });
   }
 
   @override
@@ -134,16 +216,17 @@ class _WebViewExampleState extends State<WebViewExample> {
 
   Widget appBar() {
     return AppBar(
-      backgroundColor: Colors.red[900],
       leading: Builder(
         builder: (BuildContext context) {
           return new GestureDetector(
-            onTap: () => Scaffold.of(context).openDrawer(),
+            onTap: () {},
             child: IconButton(
               icon: Icon(
                 Icons.info_rounded,
                 color: Colors.white,
               ),
+              tooltip: "Information",
+              onPressed: () => Scaffold.of(context).openDrawer(),
             ),
           );
         },
@@ -193,7 +276,7 @@ class _WebViewExampleState extends State<WebViewExample> {
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 20,
-                        ),
+                        ), 
                       ),
                     ],
                   )
@@ -237,8 +320,14 @@ class _WebViewExampleState extends State<WebViewExample> {
                 if (request.url.startsWith('https://www.pup.edu.ph/')) {
                   _launchUrlOutside(request.url);
                   return null;
-                } else {
+                } else if (request.url
+                        .startsWith('https://sisstudents.pup.edu.ph/') ||
+                    request.url.startsWith('https://sis1.pup.edu.ph/') ||
+                    request.url.startsWith('https://sis2.pup.edu.ph/') ||
+                    request.url.startsWith('https://sis8.pup.edu.ph/')) {
                   return NavigationDecision.navigate;
+                } else {
+                  return NavigationDecision.prevent;
                 }
               },
               key: key,
@@ -253,7 +342,18 @@ class _WebViewExampleState extends State<WebViewExample> {
             Container(
               color: Colors.white,
               child: Center(
-                child: CircularProgressIndicator(),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    CircularProgressIndicator(),
+                    Padding(
+                        padding: EdgeInsets.only(top: 20),
+                        child: Text(
+                          'Loading...',
+                          style: TextStyle(fontSize: 15),
+                        )),
+                  ],
+                ),
               ),
             ),
           ],
@@ -433,6 +533,7 @@ class NavigationControls extends StatelessWidget {
           children: <Widget>[
             IconButton(
               icon: const Icon(Icons.keyboard_arrow_left),
+              tooltip: 'Back',
               onPressed: !webViewReady
                   ? null
                   : () async {
@@ -451,6 +552,7 @@ class NavigationControls extends StatelessWidget {
             ),
             IconButton(
               icon: const Icon(Icons.keyboard_arrow_right),
+              tooltip: 'Forward',
               onPressed: !webViewReady
                   ? null
                   : () async {
@@ -469,6 +571,7 @@ class NavigationControls extends StatelessWidget {
             ),
             IconButton(
               icon: const Icon(Icons.refresh),
+              tooltip: 'Refresh',
               onPressed: !webViewReady
                   ? null
                   : () {
